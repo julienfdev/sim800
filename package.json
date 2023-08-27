@@ -1,0 +1,39 @@
+{
+  "name": "sim800",
+  "version": "0.0.1",
+  "description": "A modern and opiniated module for SIM800 GSM modems ( SIM800 / SIM800L ).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/julienfdev/sim800.git"
+  },
+  "keywords": [
+    "sim800",
+    "sim800l",
+    "gsm",
+    "sms",
+    "serialport",
+    "modem",
+    "AT",
+    "AT",
+    "command"
+  ],
+  "author": "Julien Ferand",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/julienfdev/sim800/issues"
+  },
+  "homepage": "https://github.com/julienfdev/sim800#readme",
+  "dependencies": {
+    "rxjs": "^7.8.1",
+    "serialport": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.6",
+    "typescript": "^5.2.2"
+  }
+}

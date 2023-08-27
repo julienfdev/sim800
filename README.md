@@ -1,5 +1,7 @@
 # SIM800
 
+WARNING: This is a work in progress, please don't use as an npm package for now
+
 A modern and opiniated module for SIM800 modems ( SIM800 / SIM800L ). 
 The `sim800` paradigm is mainly inspired by the version 3 of the [aws-sdk](https://github.com/aws/aws-sdk-js-v3)
 
