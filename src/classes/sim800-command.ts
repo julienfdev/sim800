@@ -1,10 +1,4 @@
-import {
-  AsyncSubject,
-  catchError,
-  lastValueFrom,
-  takeUntil,
-  timeout,
-} from 'rxjs';
+import { AsyncSubject, catchError, lastValueFrom, takeUntil, timeout } from 'rxjs';
 import { Sim800CommandInput } from '../interfaces/sim800-command-input.interface';
 import { Sim800CommandState } from '../interfaces/sim800-command-state.enum';
 import { Sim800Client } from '../sim800.client';
@@ -34,9 +28,7 @@ export class Sim800Command {
     this.errorWhen = input.errorWhen;
     this.observer = input.observer;
     if (!this.observer && !this.completeWhen) {
-      throw new Error(
-        `Either observer or completeWhen must be provided for "${this.command}" command`,
-      );
+      throw new Error(`Either observer or completeWhen must be provided for "${this.command}" command`);
     }
   }
 
@@ -47,9 +39,7 @@ export class Sim800Command {
 
   protected execute(stream$: Sim800Client['stream$'], serial: SerialPort) {
     if (this.observer) {
-      stream$
-        .pipe(timeout(this.timeoutMs), takeUntil(this.completed$))
-        .subscribe(this.observer);
+      stream$.pipe(timeout(this.timeoutMs), takeUntil(this.completed$)).subscribe(this.observer);
     }
     // Auto advance state
     stream$

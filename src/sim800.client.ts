@@ -1,12 +1,4 @@
-import {
-  AsyncSubject,
-  Subject,
-  from,
-  interval,
-  lastValueFrom,
-  takeUntil,
-  timeout,
-} from 'rxjs';
+import { AsyncSubject, Subject, from, interval, lastValueFrom, takeUntil, timeout } from 'rxjs';
 import { Sim800ClientConfig } from './interfaces/sim800-client-config.interface';
 import { ReadlineParser, SerialPort } from 'serialport';
 import { attachSerialListeners } from './helpers/attach-serial-listeners';
@@ -20,8 +12,11 @@ import { CpinStatusCommand } from './classes/cpin-status-command';
 import { Sim800PinState } from './interfaces/sim800-pin-state.enum';
 import { PinUnlockCommand } from './classes/pin-unlock-command';
 import { CregStatusCommand } from './classes/creg-status-command';
+import EventEmitter from 'stream';
+import { Sim800EventEmitter } from 'interfaces/sim800-event-emitter';
 
-export class Sim800Client {
+export class Sim800Client implements Sim800EventEmitter {
+  private eventEmitter = new EventEmitter();
   private nextJob$ = new Subject<void>();
   private buffer: Sim800Command[] = [];
   private port: string;
@@ -52,7 +47,10 @@ export class Sim800Client {
 
     this.serial.pipe(this.parser);
     attachSerialListeners(this.serial, this.parser, {
-      open: () => sim800OpenHandler(this.ready$),
+      open: () => {
+        this.eventEmitter.emit('deviceReady');
+        sim800OpenHandler(this.ready$);
+      },
       data: (data: string) => sim800DataHandler(data, this.stream$),
       error: (error: Error) => sim800ErrorHandler(error, logger),
     });
@@ -80,11 +78,11 @@ export class Sim800Client {
         );
       }
       this.state = Sim800ClientState.Initialized;
-      this.logger.log('Sim800Client Initialized, waiting for network');
+      this.logger?.log('Sim800Client Initialized, waiting for network');
       this.checkNewtork();
     } catch (error) {
-      if ('message' in error) {
-        this.logger.error(`Sim800Client init error : ${error.message}`);
+      if (typeof error === 'object' && error && 'message' in error) {
+        this.logger?.error(`Sim800Client init error : ${error.message}`);
       }
     }
   }
@@ -97,22 +95,18 @@ export class Sim800Client {
     return lastValueFrom(this.network$);
   }
 
-  async send<ModemResponse extends string = string>(
-    command: Sim800Command,
-  ): Promise<ModemResponse> {
+  async send<ModemResponse extends string = string>(command: Sim800Command): Promise<ModemResponse> {
     // we subscribe to the completed observable
     command.completed$.subscribe((pid) => {
       if (command.result) {
-        this.logger.verbose?.(
+        this.logger?.verbose?.(
           `Command "${command.command}" with PID ${pid} has completed with result "${command.result}"`,
         );
       }
       // we can remove the command from the buffer
       this.buffer = this.buffer.filter((c) => c.pid !== pid);
       if (this.buffer.length) {
-        this.logger.verbose?.(
-          `Executing next command "${this.buffer[0].command}" with PID ${this.buffer[0].pid}`,
-        );
+        this.logger?.verbose?.(`Executing next command "${this.buffer[0].command}" with PID ${this.buffer[0].pid}`);
         this.nextJob$.next();
       }
     });
@@ -120,9 +114,7 @@ export class Sim800Client {
     this.buffer.push(command);
     // if the buffer has only one command, we execute it
     if (this.buffer.length === 1) {
-      this.logger.verbose?.(
-        `Executing "${command.command}" with PID ${command.pid}`,
-      );
+      this.logger?.verbose?.(`Executing "${command.command}" with PID ${command.pid}`);
       this.nextJob$.next();
     }
     await lastValueFrom(command.completed$);
@@ -134,17 +126,13 @@ export class Sim800Client {
     switch (status) {
       case Sim800PinState.PinRequired:
         if (this.pin) {
-          this.logger.warn(
-            'Pin required, unlocking sim card with provided pin',
-          );
+          this.logger?.warn('Pin required, unlocking sim card with provided pin');
           return this.send(new PinUnlockCommand(this.pin));
         } else {
           throw new Error('Pin required but not provided');
         }
       case Sim800PinState.PukRequired:
-        throw new Error(
-          'Sim locked, puk required, please use a mobile phone to unlock the sim card',
-        );
+        throw new Error('Sim locked, puk required, please use a mobile phone to unlock the sim card');
       case Sim800PinState.Ready:
         break;
     }
@@ -160,6 +148,7 @@ export class Sim800Client {
   }
 
   private setNetworkReady() {
+    this.eventEmitter.emit('networkReady');
     this.network$.next(true);
     this.network$.complete();
     // Initialize brownout detection, if brownout, reset and call back init if not pin error
@@ -181,9 +170,16 @@ export class Sim800Client {
         this.setNetworkReady();
         break;
       case '3':
-        this.logger.warn('Network registration denied');
+        this.logger?.warn('Network registration denied');
         this.setNetworkNotReady();
         break;
     }
+  }
+
+  // Events override
+  on(event: 'deviceReady', listener: () => void): import('events');
+  on(event: 'networkReady', listener: () => void): import('events');
+  on(event: string, listener: (...args: any) => void): import('events') {
+    return this.eventEmitter.on(event, listener);
   }
 }
