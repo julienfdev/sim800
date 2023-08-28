@@ -113,8 +113,3 @@ export class Sim800Command {
     }
   }
 }
-
-new Sim800Command({
-  command: Sim800CommandType.AT,
-  completeWhen: 'OK',
-});
