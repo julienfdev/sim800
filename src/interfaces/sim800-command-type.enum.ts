@@ -4,6 +4,7 @@ export enum Sim800CommandType {
   ATCPIN = 'AT+CPIN=',
   ATCNMI = 'AT+CNMI=',
   ATCMGF = 'AT+CMGF=',
+  ATCMGS = 'AT+CMGS=',
   ATCMGR = 'AT+CMGR=',
   ATCMGDA = 'AT+CMGDA=',
   ATCMGD = 'AT+CMGD=',

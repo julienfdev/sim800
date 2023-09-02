@@ -22,12 +22,16 @@ const config: Sim800ClientConfig = {
 };
 
 const client = new Sim800Client(config);
+client.on('incoming-sms', (sms) => {
+  console.log("Received new SMS from ", sms.number)
+  console.log(sms.text)
+})
 client.on('networkReady', async () => {
-  const sendSmsCommand = new SendSmsCommand({
+  const isModemOk = await client.send(new AtCommand());
+  const smsUuid = await client.sendSms({
     number: '+33605040302',
-    content: 'Hello, World!',
+    text: 'Hello, World!',
   });
-  const smsUuid = await client.send(sendSmsCommand);
 });
 ```
 
@@ -44,7 +48,7 @@ All the available commands extends the `Sim800Command` class.
 
 You are free to send raw commands, using the `Sim800Command` class, curated commands using the children classes (list below), or you can create your own, by simply extending the `Sim800Command` class.
 
-In addition the the output commands,
+In addition the the output commands, `Sim800Client` exposes some high-level methods like `sendSms` which abstract the tedious handling of Unicode and multipart SMS
 
 ### Under the hood
 

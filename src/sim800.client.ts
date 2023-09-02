@@ -21,6 +21,10 @@ import { newSmsSubscriberFactory } from './subscribers/new-sms-subscriber';
 import { CmgdaCommand } from './classes/cmgda-command';
 import { Sim800MultipartSms } from './interfaces/sim800-multipart-sms.interface';
 import { Sim800IncomingSms } from './interfaces/sim800-incoming-sms.interface';
+import { Submit } from 'node-pdu';
+import { CmgsCommand } from './classes/cmgs-command';
+import { InputCommand } from './classes/input-command';
+import { DCS, SubmitType } from 'node-pdu/dist/utils';
 
 export class Sim800Client implements Sim800EventEmitter {
   eventEmitter = new EventEmitter();
@@ -150,6 +154,27 @@ export class Sim800Client implements Sim800EventEmitter {
       return command.raw;
     }
     return command.result;
+  }
+
+  async sendSms(number: string, text: string) {
+    try {
+      const data = new Submit(number, text, {
+        type: new SubmitType({ statusReportRequest: 0 }),
+        dataCodingScheme: new DCS({
+          textAlphabet: DCS.ALPHABET_UCS2,
+        }),
+      });
+
+      for await (const pduPart of data.getParts()) {
+        const result = await this.send(new CmgsCommand(data.address.size + pduPart.size + 2));
+        // Il faut ajouter des "Expected Strings" optionnelles pour les réponses qui prennent plusieurs lignes, comme ça on ajoute au raw que si ça match, also, on
+        // peut de ce fait déterminer si un input appartient à la commande ou pas, et donc ne pas l'ajouter au buffer
+        const commandResult = await this.send(new InputCommand(pduPart.toString(data)), { raw: true });
+        console.log('SENT PART with SIM ID :', commandResult);
+      }
+    } catch (error) {
+      console.log('ERROR', error);
+    }
   }
 
   private async handlePinState(status: Sim800PinState) {

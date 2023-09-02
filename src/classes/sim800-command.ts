@@ -13,6 +13,7 @@ export class Sim800Command {
   protected completeWhen: Sim800CommandInput['completeWhen'];
   protected errorWhen: Sim800CommandInput['errorWhen'];
   protected ack: boolean = false;
+  protected isInput?: boolean;
   result: string | null = null;
   raw: string[] = []; // the raw stream of input received during the command handling
   error: Error | null = null;
@@ -27,6 +28,7 @@ export class Sim800Command {
     this.completeWhen = input.completeWhen;
     this.errorWhen = input.errorWhen;
     this.observer = input.observer;
+    this.isInput = input.isInput;
     if (!this.observer && !this.completeWhen) {
       throw new Error(`Either observer or completeWhen must be provided for "${this.command}" command`);
     }
@@ -40,7 +42,10 @@ export class Sim800Command {
   isDataPartOfRunningCommand(data: string) {
     return (
       this.state !== Sim800CommandState.Created &&
-      (data.startsWith(this.command) || this.handleCompletedWhen(data) || this.handleErrorWhen(data))
+      (data.includes(this.command) ||
+        this.handleCompletedWhen(data) ||
+        this.handleErrorWhen(data) ||
+        (this.isInput && data.startsWith('> ')))
     );
   }
 
@@ -70,10 +75,14 @@ export class Sim800Command {
         this.handleCompletedWhen(data);
         this.handleErrorWhen(data);
       });
-    if (this.arg) {
-      serial.write(`${this.command}${this.arg}\n`);
+    if (this.isInput) {
+      serial.write(`${this.command}${String.fromCharCode(26)}`);
     } else {
-      serial.write(`${this.command}\n`);
+      if (this.arg) {
+        serial.write(`${this.command}${this.arg}\n`);
+      } else {
+        serial.write(`${this.command}\n`);
+      }
     }
     this.state = Sim800CommandState.Transmitting;
   }
