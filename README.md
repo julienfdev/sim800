@@ -244,6 +244,4 @@ const unlockSimCommand = new PinUnlockCommand('1234');
 ```
 
 
-### Streams
-
 
