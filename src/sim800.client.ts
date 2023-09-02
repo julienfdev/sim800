@@ -14,9 +14,16 @@ import { PinUnlockCommand } from './classes/pin-unlock-command';
 import { CregStatusCommand } from './classes/creg-status-command';
 import EventEmitter from 'stream';
 import { Sim800EventEmitter } from 'interfaces/sim800-event-emitter';
+import { CnmiCommand } from './classes/cnmi-command';
+import { CmgfMode } from './interfaces/sim800-command.enums';
+import { CmgfCommand } from './classes/cmgf-command';
+import { newSmsSubscriberFactory } from './subscribers/new-sms-subscriber';
+import { CmgdaCommand } from './classes/cmgda-command';
+import { Sim800MultipartSms } from './interfaces/sim800-multipart-sms.interface';
+import { Sim800IncomingSms } from './interfaces/sim800-incoming-sms.interface';
 
 export class Sim800Client implements Sim800EventEmitter {
-  private eventEmitter = new EventEmitter();
+  eventEmitter = new EventEmitter();
   private nextJob$ = new Subject<void>();
   private buffer: Sim800Command[] = [];
   private port: string;
@@ -27,15 +34,20 @@ export class Sim800Client implements Sim800EventEmitter {
   private parser: ReadlineParser;
 
   private pin?: string;
+  private cnmi = '2,1,2,1,0' as const;
 
   private ready$ = new AsyncSubject<boolean>();
   private network$ = new AsyncSubject<boolean>();
   private stream$ = new Subject<string>();
+  private inputStream$ = new Subject<string>();
 
   state: Sim800ClientState = Sim800ClientState.Idle;
+  incomingSms: Sim800MultipartSms[] = [];
+  preventWipe: boolean;
 
-  constructor({ port, baudRate, delimiter, logger, pin }: Sim800ClientConfig) {
+  constructor({ port, baudRate, delimiter, logger, pin, preventWipe }: Sim800ClientConfig) {
     this.port = port;
+    this.preventWipe = preventWipe || false;
     this.pin = pin;
     this.baudRate = baudRate || 115200;
     this.delimiter = delimiter || '\r\n';
@@ -59,6 +71,8 @@ export class Sim800Client implements Sim800EventEmitter {
       const command = this.buffer[0];
       command.send(this.stream$, this.serial);
     });
+    this.stream$.subscribe(this.handleInputData);
+    this.inputStream$.subscribe(newSmsSubscriberFactory(this, this.logger));
     this.init();
   }
 
@@ -71,7 +85,7 @@ export class Sim800Client implements Sim800EventEmitter {
 
       // Handling Pin Status
       try {
-        await this.handlePinState(await this.send(new CpinStatusCommand()));
+        await this.handlePinState((await this.send(new CpinStatusCommand())) as Sim800PinState);
       } catch (err) {
         throw new Error(
           `Error while handling PIN code, please check that the pin is correct before trying again to prevent sim card lock`,
@@ -80,6 +94,14 @@ export class Sim800Client implements Sim800EventEmitter {
       this.state = Sim800ClientState.Initialized;
       this.logger?.log('Sim800Client Initialized, waiting for network');
       this.checkNewtork();
+      // Change SIM Mode
+      await this.send(new CnmiCommand(this.cnmi));
+      // Change to PDU
+      await this.send(new CmgfCommand(CmgfMode.Pdu));
+      if (!this.preventWipe) {
+        // By default, wipe every SMS
+        await this.send(new CmgdaCommand());
+      }
     } catch (error) {
       if (typeof error === 'object' && error && 'message' in error) {
         this.logger?.error(`Sim800Client init error : ${error.message}`);
@@ -95,20 +117,25 @@ export class Sim800Client implements Sim800EventEmitter {
     return lastValueFrom(this.network$);
   }
 
-  async send<ModemResponse extends string = string>(command: Sim800Command): Promise<ModemResponse> {
+  async send(command: Sim800Command, options?: { raw?: boolean }) {
     // we subscribe to the completed observable
     command.completed$.subscribe((pid) => {
-      if (command.result) {
-        this.logger?.verbose?.(
-          `Command "${command.command}" with PID ${pid} has completed with result "${command.result}"`,
-        );
-      }
-      // we can remove the command from the buffer
-      this.buffer = this.buffer.filter((c) => c.pid !== pid);
-      if (this.buffer.length) {
-        this.logger?.verbose?.(`Executing next command "${this.buffer[0].command}" with PID ${this.buffer[0].pid}`);
-        this.nextJob$.next();
-      }
+      setTimeout(() => {
+        if (command.result) {
+          this.logger?.verbose?.(
+            `Command "${command.command}" with PID ${pid} has completed with result "${command.result}"`,
+          );
+        }
+        // we can remove the command from the buffer
+        const commandIndex = this.buffer.findIndex((c) => c.pid === pid);
+        if (commandIndex > -1) {
+          this.buffer.splice(commandIndex, 1);
+        }
+        if (this.buffer.length) {
+          this.logger?.verbose?.(`Executing next command "${this.buffer[0].command}" with PID ${this.buffer[0].pid}`);
+          this.nextJob$.next();
+        }
+      }, 0);
     });
     // we add the command to the buffer
     this.buffer.push(command);
@@ -119,7 +146,10 @@ export class Sim800Client implements Sim800EventEmitter {
     }
     await lastValueFrom(command.completed$);
     if (command.error) throw command.error;
-    return command.result as ModemResponse;
+    if (options?.raw) {
+      return command.raw;
+    }
+    return command.result;
   }
 
   private async handlePinState(status: Sim800PinState) {
@@ -142,7 +172,7 @@ export class Sim800Client implements Sim800EventEmitter {
     interval(10000)
       .pipe(takeUntil(this.network$))
       .subscribe(async () => {
-        const networkResult = await this.send(new CregStatusCommand());
+        const networkResult = (await this.send(new CregStatusCommand())) as string;
         this.handleNetworkResult(networkResult);
       });
   }
@@ -176,9 +206,21 @@ export class Sim800Client implements Sim800EventEmitter {
     }
   }
 
+  private handleInputData = (data: string) => {
+    const bufferCopy = [...this.buffer];
+    // Copying buffer to prevent side effects of a command being removed from the buffer while the function is running
+    // Is data part of command?
+    if (!((bufferCopy.length && bufferCopy[0].isDataPartOfRunningCommand(data)) || data === 'OK' || data === 'ERROR')) {
+      this.eventEmitter.emit('input', data);
+      this.inputStream$.next(data);
+    }
+  };
+
   // Events override
   on(event: 'deviceReady', listener: () => void): import('events');
   on(event: 'networkReady', listener: () => void): import('events');
+  on(event: 'input', listener: (data: string) => void): import('events');
+  on(event: 'incoming-sms', listener: (sms: Sim800IncomingSms) => void): EventEmitter;
   on(event: string, listener: (...args: any) => void): import('events') {
     return this.eventEmitter.on(event, listener);
   }

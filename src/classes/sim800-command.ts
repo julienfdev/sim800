@@ -3,7 +3,6 @@ import { Sim800CommandInput } from '../interfaces/sim800-command-input.interface
 import { Sim800CommandState } from '../interfaces/sim800-command-state.enum';
 import { Sim800Client } from '../sim800.client';
 import { SerialPort } from 'serialport';
-import { Sim800CommandType } from '../interfaces/sim800-command-type.enum';
 
 export class Sim800Command {
   command: Sim800CommandInput['command'];
@@ -15,6 +14,7 @@ export class Sim800Command {
   protected errorWhen: Sim800CommandInput['errorWhen'];
   protected ack: boolean = false;
   result: string | null = null;
+  raw: string[] = []; // the raw stream of input received during the command handling
   error: Error | null = null;
   protected observer: Sim800CommandInput['observer'];
   protected timeoutMs: number;
@@ -37,6 +37,13 @@ export class Sim800Command {
     await lastValueFrom(this.completed$);
   }
 
+  isDataPartOfRunningCommand(data: string) {
+    return (
+      this.state !== Sim800CommandState.Created &&
+      (data.startsWith(this.command) || this.handleCompletedWhen(data) || this.handleErrorWhen(data))
+    );
+  }
+
   protected execute(stream$: Sim800Client['stream$'], serial: SerialPort) {
     if (this.observer) {
       stream$.pipe(timeout(this.timeoutMs), takeUntil(this.completed$)).subscribe(this.observer);
@@ -53,7 +60,10 @@ export class Sim800Command {
         }),
       )
       .subscribe((data) => {
-        if (data === this.command) {
+        if (this.ack) {
+          this.raw.push(data);
+        }
+        if (data.startsWith(this.command)) {
           this.ack = true;
           this.state = Sim800CommandState.Acknowledged;
         }
@@ -90,12 +100,15 @@ export class Sim800Command {
       if (typeof this.completeWhen === 'string') {
         if (data === this.completeWhen) {
           this.setResult(data);
+          return true;
         }
       } else {
         if (this.completeWhen(data)) {
           this.setResult(data);
+          return true;
         }
       }
+      return false;
     }
   }
 
@@ -104,12 +117,15 @@ export class Sim800Command {
       if (typeof this.errorWhen === 'string') {
         if (data === this.errorWhen) {
           this.setError(new Error(data));
+          return true;
         }
       } else {
         if (this.errorWhen(data)) {
           this.setError(new Error(data));
+          return true;
         }
       }
     }
+    return false;
   }
 }
