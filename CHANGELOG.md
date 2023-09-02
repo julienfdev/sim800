@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
 ### Fixed
 - A bug preventing multi part delivery reports from being handled correctly
 
@@ -23,5 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial Release
 
 
-[unreleased]: https://github.com/julienfdev/sim800/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/julienfdev/sim800/compare/v0.2.0...HEAD
+[0.2.0]:  https://github.com/julienfdev/sim800/releases/tag/v0.2.0
 [0.1.2]:  https://github.com/julienfdev/sim800/releases/tag/v0.1.2
