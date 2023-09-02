@@ -41,6 +41,10 @@ export const deliveryReportStreamSubscriberFactory =
           'delivery-report',
           existingSms.parts.map((existingPart) => existingPart.messageReference),
           existingSms.status,
+          existingSms.parts.map((existingPart) => ({
+            messageReference: existingPart.messageReference,
+            detail: existingPart.detail,
+          })),
         );
       }
     }

@@ -11,6 +11,10 @@ export interface Sim800EventEmitter {
   on(event: 'sms-sent', listener: (compositeId: number[]) => void): EventEmitter;
   on(
     event: 'delivery-report',
-    listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
+    listener: (
+      compositeId: number[],
+      status: Sim800OutgoingSmsStatus,
+      detail?: { messageReference: number; detail: Sim800DeliveryStatusDetail }[],
+    ) => void,
   ): EventEmitter;
 }

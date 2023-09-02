@@ -1,4 +1,3 @@
-import { Sim800EventEmitter } from 'interfaces/sim800-event-emitter';
 import { AsyncSubject, Subject, from, interval, lastValueFrom, takeUntil, timeout } from 'rxjs';
 import { ReadlineParser, SerialPort } from 'serialport';
 import EventEmitter from 'stream';
@@ -16,23 +15,26 @@ import { sim800DataHandler } from './handlers/sim800.data.handler';
 import { sim800ErrorHandler } from './handlers/sim800.error.handler';
 import { sim800OpenHandler } from './handlers/sim800.open.handler';
 import { attachSerialListeners } from './helpers/attach-serial-listeners';
+import { generatePduData } from './helpers/generate-pdu-data';
+import { handleSmsStreamAfterPduPart } from './helpers/handle-sms-stream-after-pdu-part';
 import { Sim800DeliveryEvent, Sim800DeliveryStatusDetail } from './interfaces/sim-800-delivery.interface';
 import { Sim800ClientConfig } from './interfaces/sim800-client-config.interface';
 import { Sim800ClientState } from './interfaces/sim800-client-state.enum';
 import { CmgfMode } from './interfaces/sim800-command.enums';
+import { Sim800EventEmitter } from './interfaces/sim800-event-emitter';
 import { Sim800IncomingSms } from './interfaces/sim800-incoming-sms.interface';
 import { Sim800MultipartSms } from './interfaces/sim800-multipart-sms.interface';
 import {
   Sim800OutgoingSms,
   Sim800OutgoingSmsStatus,
   Sim800OutgoingSmsStreamEvent,
-  SmsPduData,
 } from './interfaces/sim800-outgoing-sms.interface';
 import { Sim800PinState } from './interfaces/sim800-pin-state.enum';
+import { completedCommandSubscriberFactory } from './subscribers/completed-command-subscriber';
 import { deliveryReportInputSubscriberFactory } from './subscribers/delivery-report-input-subscriber';
 import { deliveryReportStreamSubscriberFactory } from './subscribers/delivery-report-stream-subscriber';
 import { newSmsSubscriberFactory } from './subscribers/new-sms-subscriber';
-import { PDUParser } from 'pdu.ts';
+import { smsStreamSubscriberFactory } from './subscribers/sms-stream-subscriber';
 
 export class Sim800Client implements Sim800EventEmitter {
   eventEmitter = new EventEmitter();
@@ -92,29 +94,11 @@ export class Sim800Client implements Sim800EventEmitter {
     this.inputStream$.subscribe(newSmsSubscriberFactory(this, this.logger));
     this.inputStream$.subscribe(deliveryReportInputSubscriberFactory(this, this.logger));
     this.deliveryReportStream$.subscribe(deliveryReportStreamSubscriberFactory(this, this.logger));
-    this.smsStream$.subscribe((sms) => {
-      if (sms.type === 'part') {
-        const existingSms = this.outboxSpooler.find((outboxSms) =>
-          outboxSms.parts.some((part) => sms.data.belongsTo.some((id) => part.belongsTo.includes(id))),
-        );
-        if (existingSms) {
-          existingSms.parts.push(sms.data);
-        }
-        if (
-          existingSms &&
-          existingSms?.parts.length === existingSms.length &&
-          existingSms.parts.every((part) => part.status === Sim800OutgoingSmsStatus.Sent)
-        ) {
-          existingSms.status = Sim800OutgoingSmsStatus.Sent;
-        }
-      } else {
-        this.outboxSpooler.push(sms.data);
-      }
-    });
+    this.smsStream$.subscribe(smsStreamSubscriberFactory(this));
     this.init();
   }
 
-  // TODO autoretry
+  // TODO autoretry && reset watchdog
   private async init() {
     try {
       await lastValueFrom(from(this.awaitDevice()).pipe(timeout(5000)));
@@ -157,24 +141,7 @@ export class Sim800Client implements Sim800EventEmitter {
 
   async send(command: Sim800Command, options?: { raw?: boolean }) {
     // we subscribe to the completed observable
-    command.completed$.subscribe((pid) => {
-      setTimeout(() => {
-        if (command.result) {
-          this.logger?.verbose?.(
-            `Command "${command.command}" with PID ${pid} has completed with result "${command.result}"`,
-          );
-        }
-        // we can remove the command from the buffer
-        const commandIndex = this.buffer.findIndex((c) => c.pid === pid);
-        if (commandIndex > -1) {
-          this.buffer.splice(commandIndex, 1);
-        }
-        if (this.buffer.length) {
-          this.logger?.verbose?.(`Executing next command "${this.buffer[0].command}" with PID ${this.buffer[0].pid}`);
-          this.nextJob$.next();
-        }
-      }, 0);
-    });
+    command.completed$.subscribe(completedCommandSubscriberFactory(command, this.buffer, this.nextJob$, this.logger));
     // we add the command to the buffer
     this.buffer.push(command);
     // if the buffer has only one command, we execute it
@@ -194,78 +161,26 @@ export class Sim800Client implements Sim800EventEmitter {
     const compositeId: number[] = [];
     // We need to add a busy observer to prevent sending multiple sms at the same time (debatable)
     try {
-      const data = PDUParser.Generate({
-        encoding: '16bit',
-        smsc: undefined as unknown as string,
-        smsc_type: 91,
-        receiver: number.replace('+', ''),
-        receiver_type: 91,
-        request_status: deliveryReport,
-        text,
-      }) as unknown as SmsPduData[];
+      const data = generatePduData(number, text, deliveryReport);
 
+      // We send each pdu part
       for await (const pduPart of data) {
         await this.send(new CmgsCommand(pduPart.tpdu_length));
         const commandResult = (await this.send(new InputCommand(pduPart.smsc_tpdu), { raw: true })) as string[];
-
         const messageReference = parseInt(commandResult[0].split(':')[1].trim(), 10);
         compositeId.push(messageReference);
 
         // If there is only one part, we can push the unique part as a sms
-        if (data.length === 1) {
-          this.smsStream$.next({
-            type: 'sms',
-            data: {
-              compositeId,
-              text,
-              length: 1,
-              deliveryReport,
-              number,
-              status: Sim800OutgoingSmsStatus.Sent,
-              parts: [
-                {
-                  messageReference,
-                  status: Sim800OutgoingSmsStatus.Sent,
-                  belongsTo: compositeId,
-                },
-              ],
-            },
-          });
-        } else {
-          // We try to find an existing sms for which some ids match some items of our compositeId
-          const existingSms = this.outboxSpooler.find((sms) =>
-            sms.parts.some((part) => compositeId.includes(part.messageReference)),
-          );
-          if (existingSms) {
-            this.smsStream$.next({
-              type: 'part',
-              data: {
-                messageReference,
-                status: Sim800OutgoingSmsStatus.Sent,
-                belongsTo: compositeId,
-              },
-            });
-          } else {
-            this.smsStream$.next({
-              type: 'sms',
-              data: {
-                compositeId,
-                text,
-                length: data.length,
-                number,
-                deliveryReport,
-                status: Sim800OutgoingSmsStatus.Sending,
-                parts: [
-                  {
-                    messageReference,
-                    status: Sim800OutgoingSmsStatus.Sent,
-                    belongsTo: compositeId,
-                  },
-                ],
-              },
-            });
-          }
-        }
+        handleSmsStreamAfterPduPart(
+          data,
+          this.smsStream$,
+          this.outboxSpooler,
+          compositeId,
+          text,
+          deliveryReport,
+          number,
+          messageReference,
+        );
       }
       this.eventEmitter.emit('sms-sent', compositeId);
       return compositeId;
@@ -291,7 +206,7 @@ export class Sim800Client implements Sim800EventEmitter {
   }
 
   private checkNewtork() {
-    interval(3000)
+    interval(5000)
       .pipe(takeUntil(this.network$))
       .subscribe(async () => {
         const networkResult = (await this.send(new CregStatusCommand())) as string;
@@ -346,7 +261,11 @@ export class Sim800Client implements Sim800EventEmitter {
   on(event: 'sms-sent', listener: (compositeId: number[]) => void): EventEmitter;
   on(
     event: 'delivery-report',
-    listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
+    listener: (
+      compositeId: number[],
+      status: Sim800OutgoingSmsStatus,
+      detail?: { messageReference: number; detail: Sim800DeliveryStatusDetail }[],
+    ) => void,
   ): EventEmitter;
   on(event: string, listener: (...args: any) => void): import('events') {
     return this.eventEmitter.on(event, listener);
