@@ -12,6 +12,7 @@ export class Sim800Command {
   completed$ = new AsyncSubject<number>();
   protected completeWhen: Sim800CommandInput['completeWhen'];
   protected errorWhen: Sim800CommandInput['errorWhen'];
+  protected expectedData: Sim800CommandInput['expectedData'];
   protected ack: boolean = false;
   protected isInput?: boolean;
   result: string | null = null;
@@ -29,6 +30,7 @@ export class Sim800Command {
     this.errorWhen = input.errorWhen;
     this.observer = input.observer;
     this.isInput = input.isInput;
+    this.expectedData = input.expectedData;
     if (!this.observer && !this.completeWhen) {
       throw new Error(`Either observer or completeWhen must be provided for "${this.command}" command`);
     }
@@ -40,6 +42,10 @@ export class Sim800Command {
   }
 
   isDataPartOfRunningCommand(data: string) {
+    // If the command is expected to receive data listed in the expectedReturns array, then we should consider it as part of the command
+    if (this.expectedData && this.isDataExpected(data)) {
+      return true;
+    }
     return (
       this.state !== Sim800CommandState.Created &&
       (data.includes(this.command) ||
@@ -65,8 +71,13 @@ export class Sim800Command {
         }),
       )
       .subscribe((data) => {
-        if (this.ack) {
+        if (!this.expectedData && this.ack) {
           this.raw.push(data);
+        } else if (this.expectedData) {
+          // If we're expecting this data
+          if (this.isDataExpected(data)) {
+            this.raw.push(data);
+          }
         }
         if (data.startsWith(this.command)) {
           this.ack = true;
@@ -136,5 +147,18 @@ export class Sim800Command {
       }
     }
     return false;
+  }
+
+  private isDataExpected(data: string) {
+    if (this.expectedData) {
+      return this.expectedData.some((expected) => {
+        if (typeof expected === 'string') {
+          return data.startsWith(expected);
+        } else {
+          return expected(data);
+        }
+      });
+    }
+    return true;
   }
 }

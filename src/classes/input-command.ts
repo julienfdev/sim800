@@ -7,6 +7,8 @@ export class InputCommand extends Sim800Command {
       isInput: true,
       completeWhen: 'OK',
       errorWhen: 'ERROR',
+      expectedData: ['+CMGS:'],
+      timeoutMs: 60000,
     });
   }
 }

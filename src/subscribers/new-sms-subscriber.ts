@@ -10,6 +10,7 @@ export const newSmsSubscriberFactory = (client: Sim800Client, logger: LoggerLike
       // extract the storage from the +CMTI "XX" message
       const simIndex = parseInt(data.split(',')[1], 10);
       const result = (await client.send(new CmgrCommand(simIndex), { raw: true })) as string[];
+      console.log('RESULT', result);
       const sms = parse(result[1]);
       if (sms instanceof Deliver) {
         if (sms.getParts().every((part) => part.header === null)) {
