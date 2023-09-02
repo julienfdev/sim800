@@ -95,7 +95,7 @@ export class Sim800Client implements Sim800EventEmitter {
     this.smsStream$.subscribe((sms) => {
       if (sms.type === 'part') {
         const existingSms = this.outboxSpooler.find((outboxSms) =>
-          outboxSms.parts.every((part) => part.carrierReference === sms.data.carrierReference),
+          outboxSms.parts.some((part) => sms.data.belongsTo.some((id) => part.belongsTo.includes(id))),
         );
         if (existingSms) {
           existingSms.parts.push(sms.data);
@@ -216,6 +216,7 @@ export class Sim800Client implements Sim800EventEmitter {
           this.smsStream$.next({
             type: 'sms',
             data: {
+              compositeId,
               text,
               length: 1,
               deliveryReport,
@@ -225,6 +226,7 @@ export class Sim800Client implements Sim800EventEmitter {
                 {
                   messageReference,
                   status: Sim800OutgoingSmsStatus.Sent,
+                  belongsTo: compositeId,
                 },
               ],
             },
@@ -240,12 +242,14 @@ export class Sim800Client implements Sim800EventEmitter {
               data: {
                 messageReference,
                 status: Sim800OutgoingSmsStatus.Sent,
+                belongsTo: compositeId,
               },
             });
           } else {
             this.smsStream$.next({
               type: 'sms',
               data: {
+                compositeId,
                 text,
                 length: data.length,
                 number,
@@ -255,6 +259,7 @@ export class Sim800Client implements Sim800EventEmitter {
                   {
                     messageReference,
                     status: Sim800OutgoingSmsStatus.Sent,
+                    belongsTo: compositeId,
                   },
                 ],
               },

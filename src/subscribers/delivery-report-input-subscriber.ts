@@ -11,6 +11,7 @@ export const deliveryReportInputSubscriberFactory = (client: Sim800Client, logge
     client.receivingDeliveryReport = false;
     // This is the end of a delivery report, we need to parse the data
     const result = parse(data);
+
     if (result instanceof Report) {
       client.deliveryReportStream$.next({
         date: new Date(result.dateTime.getIsoString()),

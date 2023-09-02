@@ -18,12 +18,13 @@ export enum Sim800OutgoingSmsStatus {
 
 export interface Sim800OutgoingSmsPart {
   messageReference: number;
-  carrierReference?: number;
   status: Sim800OutgoingSmsStatus;
+  belongsTo: number[];
   detail?: Sim800DeliveryStatusDetail;
 }
 
 export interface Sim800OutgoingSms {
+  compositeId: number[];
   number: string;
   text: string;
   length: number;
