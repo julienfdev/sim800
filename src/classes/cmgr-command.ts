@@ -9,11 +9,6 @@ export class CmgrCommand extends Sim800Command {
       arg: String(index),
       completeWhen: 'OK',
       errorWhen: 'ERROR',
-      observer: {
-        next: (data) => {
-          console.log('CMGR DATA: ', data);
-        },
-      },
       expectedData: [
         '+CMGR: ',
         (data) => {

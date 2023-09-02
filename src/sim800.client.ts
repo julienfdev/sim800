@@ -106,7 +106,6 @@ export class Sim800Client implements Sim800EventEmitter {
           existingSms.parts.every((part) => part.status === Sim800OutgoingSmsStatus.Sent)
         ) {
           existingSms.status = Sim800OutgoingSmsStatus.Sent;
-          console.log('SENT SMS', existingSms);
         }
       } else {
         this.outboxSpooler.push(sms.data);
