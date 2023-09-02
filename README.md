@@ -33,6 +33,15 @@ client.on('networkReady', async () => {
 });
 ```
 
+### Features
+
+- Auto init with sim unlock 🔒
+- Network, Inbound and Outbound events 🛜
+- Full Unicode support 🤩
+- Full multipart-SMS support 📨
+- Single and Multipart Delivery Reports ✅
+- Fully configurable low level AT commands (success and error conditions, expected data...) with reliable API
+
 ## Deep Dive
 
 ### Prerequisites
@@ -244,4 +253,10 @@ const unlockSimCommand = new PinUnlockCommand('1234');
 ```
 
 
+## Contributing
 
+As always, contributing is pretty straightforward, you can either : 
+
+- Open an issue, whether it is to tell me about a bug or to request a feature, please follow usual issue report guidelines.
+
+- Fork the project, create a feature branch on your GitHub, run `npm run prepublish` before any pull request.

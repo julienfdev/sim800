@@ -1,7 +1,6 @@
 import { Sim800Command } from 'classes';
 import { LoggerLike } from 'interfaces';
 import { Subject } from 'rxjs';
-import { Sim800Client } from 'sim800.client';
 
 export const completedCommandSubscriberFactory =
   (command: Sim800Command, buffer: Sim800Command[], nextJob$: Subject<void>, logger?: LoggerLike) => (pid: number) => {

@@ -1,4 +1,3 @@
-import { CmgfMode } from 'interfaces/sim800-command.enums';
 import { Sim800CommandType } from '../interfaces/sim800-command-type.enum';
 import { Sim800Command } from './sim800-command';
 

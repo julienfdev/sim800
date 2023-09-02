@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "lint": "eslint .",
+    "prepublish": "npm run lint && npm run build"
   },
   "repository": {
     "type": "git",
@@ -36,6 +38,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.5.6",
+    "@typescript-eslint/eslint-plugin": "^6.5.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
     "typescript": "^5.2.2"
   }
 }

@@ -13,6 +13,7 @@ export const deliveryReportInputSubscriberFactory = (client: Sim800Client, logge
     const result = parse(data);
 
     if (result instanceof Report) {
+      logger.debug?.(`Delivery report received for messageReference ${result.reference}`);
       client.deliveryReportStream$.next({
         date: new Date(result.dateTime.getIsoString()),
         messageReference: result.reference,
