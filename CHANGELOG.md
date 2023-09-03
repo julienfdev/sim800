@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## Added
+- Concurrency for SMS sending : you can now call sendSms asynchronously multiple times, there is a queue system to prevent crosstalk
+
+When called, sendSms will instanciate an `Sim800Sms` and put it in a queue, then, the function will wait for the `Sim800Sms` `execute` method to resolve before sending back the `compositeId`. sendSms does not execute the method directly, it waits for the queue to handle it, thus preventing crosstalk
+
+*this is absolutely mandatory in an API context, where you can have multiple requests sending SMS at the same time.*
 
 ## [0.2.0] - 2023-09-02
 ### Fixed

@@ -4,19 +4,16 @@ import EventEmitter from 'stream';
 import { AtCommand } from './classes/at-command';
 import { CmgdaCommand } from './classes/cmgda-command';
 import { CmgfCommand } from './classes/cmgf-command';
-import { CmgsCommand } from './classes/cmgs-command';
 import { CnmiCommand } from './classes/cnmi-command';
 import { CpinStatusCommand } from './classes/cpin-status-command';
 import { CregStatusCommand } from './classes/creg-status-command';
-import { InputCommand } from './classes/input-command';
 import { PinUnlockCommand } from './classes/pin-unlock-command';
 import { Sim800Command } from './classes/sim800-command';
+import { Sim800Sms } from './classes/sim800-sms';
 import { sim800DataHandler } from './handlers/sim800.data.handler';
 import { sim800ErrorHandler } from './handlers/sim800.error.handler';
 import { sim800OpenHandler } from './handlers/sim800.open.handler';
 import { attachSerialListeners } from './helpers/attach-serial-listeners';
-import { generatePduData } from './helpers/generate-pdu-data';
-import { handleSmsStreamAfterPduPart } from './helpers/handle-sms-stream-after-pdu-part';
 import { Sim800DeliveryEvent, Sim800DeliveryStatusDetail } from './interfaces/sim-800-delivery.interface';
 import { Sim800ClientConfig } from './interfaces/sim800-client-config.interface';
 import { Sim800ClientState } from './interfaces/sim800-client-state.enum';
@@ -57,12 +54,14 @@ export class Sim800Client implements Sim800EventEmitter {
   inputStream$ = new Subject<string>();
   smsStream$ = new Subject<Sim800OutgoingSmsStreamEvent>();
   deliveryReportStream$ = new Subject<Sim800DeliveryEvent>();
+  smsQueuePing$ = new Subject<void>();
 
   state: Sim800ClientState = Sim800ClientState.Idle;
   incomingSms: Sim800MultipartSms[] = [];
   preventWipe: boolean;
   outboxSpooler: Sim800OutgoingSms[] = [];
   receivingDeliveryReport: boolean = false;
+  smsQueue: Sim800Sms[] = [];
 
   constructor({ port, baudRate, delimiter, logger, pin, preventWipe }: Sim800ClientConfig) {
     this.port = port;
@@ -95,6 +94,16 @@ export class Sim800Client implements Sim800EventEmitter {
     this.inputStream$.subscribe(deliveryReportInputSubscriberFactory(this, this.logger));
     this.deliveryReportStream$.subscribe(deliveryReportStreamSubscriberFactory(this, this.logger));
     this.smsStream$.subscribe(smsStreamSubscriberFactory(this));
+    this.smsQueuePing$.subscribe(() => {
+      this.logger?.verbose?.('an sms job has ended, shifting queue...');
+      this.smsQueue.shift();
+      if (this.smsQueue.length) {
+        this.logger?.debug?.('sending next SMS in line...');
+        this.smsQueue[0].execute();
+      } else {
+        this.logger?.debug?.('no more SMS in queue, waiting...');
+      }
+    });
     this.init();
   }
 
@@ -158,34 +167,27 @@ export class Sim800Client implements Sim800EventEmitter {
   }
 
   async sendSms(number: string, text: string, deliveryReport = false) {
-    const compositeId: number[] = [];
-    // We need to add a busy observer to prevent sending multiple sms at the same time (debatable)
+    this.logger?.log(`sendSms called for number: "${number}", waiting for the line to be free`);
+
+    const sms = new Sim800Sms(this, { number, text, deliveryReport });
+    this.smsQueue.push(sms);
+    if (this.smsQueue.length === 1) {
+      // if the queue is now of length 1, it means that the sms is the only one in the queue
+      // we can send it right away
+      this.logger?.verbose?.(`sms queue was empty, sending sms right away`);
+      sms.execute();
+    } else {
+      this.logger?.verbose?.(`sms is #${this.smsQueue.length} in queue, waiting for the line to be free`);
+    }
     try {
-      const data = generatePduData(number, text, deliveryReport);
-
-      // We send each pdu part
-      for await (const pduPart of data) {
-        await this.send(new CmgsCommand(pduPart.tpdu_length));
-        const commandResult = (await this.send(new InputCommand(pduPart.smsc_tpdu), { raw: true })) as string[];
-        const messageReference = parseInt(commandResult[0].split(':')[1].trim(), 10);
-        compositeId.push(messageReference);
-
-        // If there is only one part, we can push the unique part as a sms
-        handleSmsStreamAfterPduPart(
-          data,
-          this.smsStream$,
-          this.outboxSpooler,
-          compositeId,
-          text,
-          deliveryReport,
-          number,
-          messageReference,
-        );
-      }
+      const compositeId = await lastValueFrom(sms.result$);
       this.eventEmitter.emit('sms-sent', compositeId);
       return compositeId;
     } catch (error) {
       this.logger?.error('ERROR', error);
+      console.trace(error);
+    } finally {
+      // Process next SMS
     }
   }
 
@@ -218,7 +220,6 @@ export class Sim800Client implements Sim800EventEmitter {
     this.eventEmitter.emit('networkReady');
     this.network$.next(true);
     this.network$.complete();
-    // Initialize brownout detection, if brownout, reset and call back init if not pin error
   }
 
   private setNetworkNotReady() {
