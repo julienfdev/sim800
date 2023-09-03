@@ -1,4 +1,4 @@
-import { AsyncSubject, catchError, lastValueFrom, takeUntil, timeout } from 'rxjs';
+import { AsyncSubject, Subscription, catchError, lastValueFrom, takeUntil, timeout } from 'rxjs';
 import { Sim800CommandInput } from '../interfaces/sim800-command-input.interface';
 import { Sim800CommandState } from '../interfaces/sim800-command-state.enum';
 import { Sim800Client } from '../sim800.client';
@@ -19,6 +19,7 @@ export class Sim800Command {
   raw: string[] = []; // the raw stream of input received during the command handling
   error: Error | null = null;
   protected observer: Sim800CommandInput['observer'];
+  protected subscription?: Subscription;
   protected timeoutMs: number;
 
   constructor(input: Sim800CommandInput) {
@@ -57,7 +58,7 @@ export class Sim800Command {
 
   protected execute(stream$: Sim800Client['stream$'], serial: SerialPort) {
     if (this.observer) {
-      stream$.pipe(timeout(this.timeoutMs), takeUntil(this.completed$)).subscribe(this.observer);
+      this.subscription = stream$.pipe(timeout(this.timeoutMs), takeUntil(this.completed$)).subscribe(this.observer);
     }
     // Auto advance state
     stream$
@@ -102,6 +103,10 @@ export class Sim800Command {
     this.completed$.next(this.pid);
     this.completed$.complete();
     this.state = state;
+    // command is completed, we can unsubscribe from the stream
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+    }
   }
 
   protected setResult(data: string) {

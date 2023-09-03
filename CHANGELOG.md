@@ -11,7 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 When called, sendSms will instanciate an `Sim800Sms` and put it in a queue, then, the function will wait for the `Sim800Sms` `execute` method to resolve before sending back the `compositeId`. sendSms does not execute the method directly, it waits for the queue to handle it, thus preventing crosstalk
 
-*this is absolutely mandatory in an API context, where you can have multiple requests sending SMS at the same time.*
+*this is absolutely mandatory in an API context, where you can have multiple requests sending SMS at the same time. Please note that as AT modems does not support concurrency, only one SMS will actually be sent at the same time, thus increasing the response time of SMSes far down the queue, please use responsibly*
+
+- `noInit` option in `Sim800ClientConfig`, to allow for custom initialization routine implementation
+
+## Changed
+- The `init` routine now checks if there are SMS to delete before calling the delete-all command, to prevent meaningless errors
+
+## Fixed
+- Tiny memory leak in command observable subscription
+- Tiny memory leak in command observer
+- Tiny memory leak in network observable
 
 ## [0.2.0] - 2023-09-02
 ### Fixed

@@ -43,7 +43,7 @@ export class Sim800Client implements Sim800EventEmitter {
   private logger: Sim800ClientConfig['logger'];
   private serial: SerialPort;
   private parser: ReadlineParser;
-
+  private noInit: boolean;
   private pin?: string;
   private cnmi = '2,1,2,1,0' as const;
 
@@ -63,10 +63,11 @@ export class Sim800Client implements Sim800EventEmitter {
   receivingDeliveryReport: boolean = false;
   smsQueue: Sim800Sms[] = [];
 
-  constructor({ port, baudRate, delimiter, logger, pin, preventWipe }: Sim800ClientConfig) {
+  constructor({ port, baudRate, delimiter, logger, pin, preventWipe, noInit }: Sim800ClientConfig) {
     this.port = port;
     this.preventWipe = preventWipe || false;
     this.pin = pin;
+    this.noInit = noInit || false;
     this.baudRate = baudRate || 115200;
     this.delimiter = delimiter || '\r\n';
     this.logger = logger || console;
@@ -104,7 +105,9 @@ export class Sim800Client implements Sim800EventEmitter {
         this.logger?.debug?.('no more SMS in queue, waiting...');
       }
     });
-    this.init();
+    if (!this.noInit) {
+      this.init();
+    }
   }
 
   // TODO autoretry && reset watchdog
@@ -124,7 +127,7 @@ export class Sim800Client implements Sim800EventEmitter {
       }
       this.state = Sim800ClientState.Initialized;
       this.logger?.log('Sim800Client Initialized, waiting for network');
-      this.checkNewtork();
+      this.checkNewtork(this.network$);
       // Change SIM Mode
       await this.send(new CnmiCommand(this.cnmi));
       // Change to PDU
@@ -150,7 +153,9 @@ export class Sim800Client implements Sim800EventEmitter {
 
   async send(command: Sim800Command, options?: { raw?: boolean }) {
     // we subscribe to the completed observable
-    command.completed$.subscribe(completedCommandSubscriberFactory(command, this.buffer, this.nextJob$, this.logger));
+    const subscription = command.completed$.subscribe(
+      completedCommandSubscriberFactory(command, this.buffer, this.nextJob$, this.logger),
+    );
     // we add the command to the buffer
     this.buffer.push(command);
     // if the buffer has only one command, we execute it
@@ -159,6 +164,7 @@ export class Sim800Client implements Sim800EventEmitter {
       this.nextJob$.next();
     }
     await lastValueFrom(command.completed$);
+    subscription.unsubscribe();
     if (command.error) throw command.error;
     if (options?.raw) {
       return command.raw;
@@ -185,9 +191,6 @@ export class Sim800Client implements Sim800EventEmitter {
       return compositeId;
     } catch (error) {
       this.logger?.error('ERROR', error);
-      console.trace(error);
-    } finally {
-      // Process next SMS
     }
   }
 
@@ -207,9 +210,9 @@ export class Sim800Client implements Sim800EventEmitter {
     }
   }
 
-  private checkNewtork() {
+  private checkNewtork(network$: AsyncSubject<boolean>) {
     interval(5000)
-      .pipe(takeUntil(this.network$))
+      .pipe(takeUntil(network$))
       .subscribe(async () => {
         const networkResult = (await this.send(new CregStatusCommand())) as string;
         this.handleNetworkResult(networkResult);
@@ -225,6 +228,7 @@ export class Sim800Client implements Sim800EventEmitter {
   private setNetworkNotReady() {
     this.network$.next(false);
     this.network$.complete();
+    this.network$.unsubscribe();
     this.network$ = new AsyncSubject<boolean>();
     // check CREG or maybe COPS, reset and call back init if not pin error
   }
@@ -253,6 +257,26 @@ export class Sim800Client implements Sim800EventEmitter {
       this.inputStream$.next(data);
     }
   };
+
+  reset(emptyBuffers = false, gracePeriodMs = 10000) {
+    if (emptyBuffers) {
+      this.buffer = [];
+      this.incomingSms = [];
+      this.outboxSpooler = [];
+      this.smsQueue = [];
+    }
+    this.logger?.warn('Sim800Client reset called');
+    this.setNetworkNotReady();
+    this.serial.write(String.fromCharCode(27));
+    this.serial.write('AT+CFUN=1,1\r\n');
+    this.logger?.warn(`Sim800Client reset done, waiting ${gracePeriodMs}ms before reinitializing`);
+    if (!this.noInit) {
+      setTimeout(() => {
+        this.init();
+        this.checkNewtork(this.network$);
+      }, gracePeriodMs);
+    }
+  }
 
   // Events override
   on(event: 'deviceReady', listener: () => void): import('events');

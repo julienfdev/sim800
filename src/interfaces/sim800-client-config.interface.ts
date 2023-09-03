@@ -10,4 +10,5 @@ export interface Sim800ClientConfig {
   delimiter?: string;
   logger?: LoggerLike;
   preventWipe?: boolean;
+  noInit?: boolean;
 }

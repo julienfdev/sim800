@@ -37,10 +37,11 @@ client.on('networkReady', async () => {
 
 - Auto init with sim unlock 🔒
 - Network, Inbound and Outbound events 🛜
+- SMS Concurrency support, you can reliably send an sms request without waiting for the previous one to complete ⚡️
 - Full Unicode support 🤩
 - Full multipart-SMS support 📨
 - Single and Multipart Delivery Reports ✅
-- Fully configurable low level AT commands (success and error conditions, expected data...) with reliable API
+- Fully configurable low level AT commands (success and error conditions, expected data...) with reliable API 🤖
 
 ## Deep Dive
 

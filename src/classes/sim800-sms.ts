@@ -17,7 +17,6 @@ export class Sim800Sms {
 
   public async execute() {
     const compositeId: number[] = [];
-    // We need to add a busy observer to prevent sending multiple sms at the same time (debatable)
     try {
       const data = generatePduData(this.data.number, this.data.text, this.data.deliveryReport);
 
