@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0]
+## [0.3.0] - 2023-09-03
 ### Added
 - Concurrency for SMS sending : you can now call sendSms asynchronously multiple times, there is a queue system to prevent crosstalk
 
