@@ -3,6 +3,10 @@
 A modern and opiniated module for SIM800 modems ( SIM800 / SIM800L ).
 The `sim800` paradigm is mainly inspired by the version 3 of the [aws-sdk](https://github.com/aws/aws-sdk-js-v3)
 
+## Changelog
+
+Don't forget to take a look at the [CHANGELOG.md](https://github.com/julienfdev/sim800/blob/main/CHANGELOG.md)
+
 ## Installation and Usage
 
 ### Installation
@@ -75,6 +79,12 @@ The `Sim800Client` observe each command and manages its **output** buffer when t
 - `isNetworkReady()`: Returns a promise that resolves with the current network readiness status of the SIM800 module.
 
 - `async sendSms(number: string, text: string, deliveryReport = false): number[] ` The `sendSms()` function sends an SMS message with the specified `number` and `text` content, with an optional parameter `deliveryReport` to request delivery reports (default is false). the number should be passed as an international number (+XXYYYYYY). the function returns a Promise which resolves with a composite id, containing all the internal message references for each part (eg: `[33, 34]` for a two-part SMS) 
+
+- `checkNetwork(network$: AsyncSubject<boolean>)` This function takes a network$ stream and drives the `isNetworkReady` and the `networkReady` event. It fires an interval which checks for the `CREG` result.
+
+- `reset(emptyBuffers = false, gracePeriodMs = 10000)` resets the sim800. You can chose to empty all the buffers of the `Sim800Client` if you think the buffer state is responsible for your sim800 being stuck. The grace period is the time before initializing the sim800 again. Please note that the module won't be reinitialized if you passed the `noInit` option.
+
+- `deleteAllStoredSms()` does exactly what you think it does, please note that in order to access the sms, the sim must be unlocked and connected
 
 ### Events
 
@@ -192,6 +202,20 @@ Example:
 // Read a message from the SIM card at index 1
 const readMessageCommand = new CmgrCommand(1);
 ```
+
+- `CmglCommand`
+
+Lists SMS messages stored on the SIM card based on the specified status.
+
+Example:
+```typescript
+// List all SMS messages on the SIM card
+const listAllMessagesCommand = new CmglCommand();
+
+// List only unread SMS messages
+const listUnreadMessagesCommand = new CmglCommand(CmglStat.Unread);
+```
+
 
 - `CmgsCommand`
 

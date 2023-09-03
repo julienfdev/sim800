@@ -20,6 +20,7 @@ export interface Sim800OutgoingSmsPart {
   messageReference: number;
   status: Sim800OutgoingSmsStatus;
   belongsTo: number[];
+  deliveryDate?: Date;
   detail?: Sim800DeliveryStatusDetail;
 }
 

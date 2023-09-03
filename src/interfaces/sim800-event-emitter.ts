@@ -1,6 +1,6 @@
 import { EventEmitter } from 'stream';
 import { Sim800IncomingSms } from './sim800-incoming-sms.interface';
-import { Sim800OutgoingSmsStatus } from './sim800-outgoing-sms.interface';
+import { Sim800OutgoingSmsPart, Sim800OutgoingSmsStatus } from './sim800-outgoing-sms.interface';
 import { Sim800DeliveryStatusDetail } from './sim-800-delivery.interface';
 
 export interface Sim800EventEmitter {
@@ -13,8 +13,12 @@ export interface Sim800EventEmitter {
     event: 'delivery-report',
     listener: (
       compositeId: number[],
-      status: Sim800OutgoingSmsStatus,
-      detail?: { messageReference: number; detail: Sim800DeliveryStatusDetail }[],
+      status: Sim800OutgoingSmsStatus.Delivered,
+      detail?: Omit<Sim800OutgoingSmsPart, 'belongsTo'>[],
     ) => void,
+  ): EventEmitter;
+  on(
+    event: 'delivery-report',
+    listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
   ): EventEmitter;
 }

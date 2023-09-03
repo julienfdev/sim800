@@ -4,6 +4,7 @@ import EventEmitter from 'stream';
 import { AtCommand } from './classes/at-command';
 import { CmgdaCommand } from './classes/cmgda-command';
 import { CmgfCommand } from './classes/cmgf-command';
+import { CmglCommand } from './classes/cmgl-command';
 import { CnmiCommand } from './classes/cnmi-command';
 import { CpinStatusCommand } from './classes/cpin-status-command';
 import { CregStatusCommand } from './classes/creg-status-command';
@@ -23,6 +24,7 @@ import { Sim800IncomingSms } from './interfaces/sim800-incoming-sms.interface';
 import { Sim800MultipartSms } from './interfaces/sim800-multipart-sms.interface';
 import {
   Sim800OutgoingSms,
+  Sim800OutgoingSmsPart,
   Sim800OutgoingSmsStatus,
   Sim800OutgoingSmsStreamEvent,
 } from './interfaces/sim800-outgoing-sms.interface';
@@ -127,14 +129,13 @@ export class Sim800Client implements Sim800EventEmitter {
       }
       this.state = Sim800ClientState.Initialized;
       this.logger?.log('Sim800Client Initialized, waiting for network');
-      this.checkNewtork(this.network$);
+      this.checkNetwork(this.network$);
       // Change SIM Mode
       await this.send(new CnmiCommand(this.cnmi));
       // Change to PDU
       await this.send(new CmgfCommand(CmgfMode.Pdu));
       if (!this.preventWipe) {
-        // By default, wipe every SMS
-        await this.send(new CmgdaCommand());
+        this.deleteAllStoredSms();
       }
     } catch (error) {
       if (typeof error === 'object' && error && 'message' in error) {
@@ -187,7 +188,7 @@ export class Sim800Client implements Sim800EventEmitter {
     }
     try {
       const compositeId = await lastValueFrom(sms.result$);
-      this.eventEmitter.emit('sms-sent', compositeId);
+      this.eventEmitter.emit('sms-sent', compositeId, new Date());
       return compositeId;
     } catch (error) {
       this.logger?.error('ERROR', error);
@@ -210,7 +211,7 @@ export class Sim800Client implements Sim800EventEmitter {
     }
   }
 
-  private checkNewtork(network$: AsyncSubject<boolean>) {
+  checkNetwork(network$: AsyncSubject<boolean>) {
     interval(5000)
       .pipe(takeUntil(network$))
       .subscribe(async () => {
@@ -273,9 +274,24 @@ export class Sim800Client implements Sim800EventEmitter {
     if (!this.noInit) {
       setTimeout(() => {
         this.init();
-        this.checkNewtork(this.network$);
       }, gracePeriodMs);
     }
+  }
+
+  async deleteAllStoredSms() {
+    // By default, wipe every SMS if there is any, we must wait for a network ready indication
+    // and wait for another 2-3 seconds for the SIM to be ready
+    await this.isNetworkReady();
+    setTimeout(async () => {
+      try {
+        const result = await this.send(new CmglCommand(), { raw: true });
+        if (result?.length) {
+          await this.send(new CmgdaCommand());
+        }
+      } catch (error) {
+        this.logger?.warn("Couldn't perform the CMGL command properly, maybe SIM not yet fully initialized");
+      }
+    }, 2000);
   }
 
   // Events override
@@ -288,9 +304,13 @@ export class Sim800Client implements Sim800EventEmitter {
     event: 'delivery-report',
     listener: (
       compositeId: number[],
-      status: Sim800OutgoingSmsStatus,
-      detail?: { messageReference: number; detail: Sim800DeliveryStatusDetail }[],
+      status: Sim800OutgoingSmsStatus.Delivered,
+      detail?: Omit<Sim800OutgoingSmsPart, 'belongsTo'>[],
     ) => void,
+  ): EventEmitter;
+  on(
+    event: 'delivery-report',
+    listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
   ): EventEmitter;
   on(event: string, listener: (...args: any) => void): import('events') {
     return this.eventEmitter.on(event, listener);

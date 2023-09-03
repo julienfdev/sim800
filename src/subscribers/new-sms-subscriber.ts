@@ -14,7 +14,11 @@ export const newSmsSubscriberFactory = (client: Sim800Client, logger: LoggerLike
       if (sms instanceof Deliver) {
         if (sms.getParts().every((part) => part.header === null)) {
           logger.verbose?.('incoming SMS is single part, emitting');
-          client.eventEmitter.emit('incoming-sms', { number: sms.address.phone, text: sms.data.getText() });
+          client.eventEmitter.emit('incoming-sms', {
+            number: sms.address.phone,
+            text: sms.data.getText(),
+            date: new Date(),
+          });
         } else {
           // SMS is Multipart, should be only 1 part per sms though
           sms.getParts().forEach((part) => {
@@ -32,7 +36,11 @@ export const newSmsSubscriberFactory = (client: Sim800Client, logger: LoggerLike
                 // Complete detection
                 if (existingRef.parts.length === existingRef.length) {
                   // EMIT INCOMING SMS, DELETE PARTS AND SPLICE THE BUFFER
-                  client.eventEmitter.emit('incoming-sms', { number: existingRef.number, text: existingRef.text });
+                  client.eventEmitter.emit(
+                    'incoming-sms',
+                    { number: existingRef.number, text: existingRef.text, date: new Date() },
+                    new Date(),
+                  );
                   if (!client.preventWipe) {
                     existingRef.parts.forEach((part) => client.send(new CmgdCommand(part.simIndex)));
                   }

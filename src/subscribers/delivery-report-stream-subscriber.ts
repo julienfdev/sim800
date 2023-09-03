@@ -14,6 +14,9 @@ export const deliveryReportStreamSubscriberFactory =
       const part = existingSms.parts.find((part) => part.messageReference === event.messageReference)!;
       part.status = event.status;
       part.detail = event.detail;
+      if (event.status === Sim800OutgoingSmsStatus.Delivered) {
+        part.deliveryDate = new Date();
+      }
       // If this is not delivered, we can update the global message status
       if (event.status !== Sim800OutgoingSmsStatus.Delivered) {
         existingSms.status = event.status;
@@ -43,7 +46,9 @@ export const deliveryReportStreamSubscriberFactory =
           existingSms.status,
           existingSms.parts.map((existingPart) => ({
             messageReference: existingPart.messageReference,
+            status: existingPart.status,
             detail: existingPart.detail,
+            ...(existingPart.deliveryDate ? { deliveryDate: existingPart.deliveryDate } : {}),
           })),
         );
       }
