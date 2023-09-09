@@ -112,7 +112,6 @@ export class Sim800Client implements Sim800EventEmitter {
     }
   }
 
-  // TODO autoretry && reset watchdog
   private async init() {
     try {
       await lastValueFrom(from(this.awaitDevice()).pipe(timeout(5000)));
@@ -123,6 +122,7 @@ export class Sim800Client implements Sim800EventEmitter {
       try {
         await this.handlePinState((await this.send(new CpinStatusCommand())) as Sim800PinState);
       } catch (err) {
+        this.eventEmitter.emit('error', new Error('Error while handling PIN code'));
         throw new Error(
           `Error while handling PIN code, please check that the pin is correct before trying again to prevent sim card lock`,
         );
@@ -139,6 +139,7 @@ export class Sim800Client implements Sim800EventEmitter {
       }
     } catch (error) {
       if (typeof error === 'object' && error && 'message' in error) {
+        this.eventEmitter.emit('error', error);
         this.logger?.error(`Sim800Client init error : ${error.message}`);
       }
     }
@@ -166,7 +167,10 @@ export class Sim800Client implements Sim800EventEmitter {
     }
     await lastValueFrom(command.completed$);
     subscription.unsubscribe();
-    if (command.error) throw command.error;
+    if (command.error) {
+      this.eventEmitter.emit('error', command.error);
+      throw command.error;
+    }
     if (options?.raw) {
       return command.raw;
     }
@@ -191,6 +195,7 @@ export class Sim800Client implements Sim800EventEmitter {
       this.eventEmitter.emit('sms-sent', compositeId, new Date());
       return compositeId;
     } catch (error) {
+      this.eventEmitter.emit('error', error);
       this.logger?.error('ERROR', error);
     }
   }
@@ -290,6 +295,7 @@ export class Sim800Client implements Sim800EventEmitter {
         }
       } catch (error) {
         this.logger?.warn("Couldn't perform the CMGL command properly, maybe SIM not yet fully initialized");
+        this.eventEmitter.emit('error', error);
       }
     }, 2000);
   }
@@ -312,6 +318,7 @@ export class Sim800Client implements Sim800EventEmitter {
     event: 'delivery-report',
     listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
   ): EventEmitter;
+  on(event: 'error', listener: (error: Error) => void): EventEmitter;
   on(event: string, listener: (...args: any) => void): import('events') {
     return this.eventEmitter.on(event, listener);
   }

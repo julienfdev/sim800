@@ -21,4 +21,5 @@ export interface Sim800EventEmitter {
     event: 'delivery-report',
     listener: (compositeId: number[], status: Sim800OutgoingSmsStatus, detail?: Sim800DeliveryStatusDetail) => void,
   ): EventEmitter;
+  on(event: 'error', listener: (error: Error) => void): EventEmitter;
 }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2023-09-09
+### Added
+- Error event
+
+The error event is fired asynchronously when a `send` ends in an error. It allows you to easily implement a watchdog, monitor sms or network failures, etc... 
+
 ## [0.3.0] - 2023-09-03
 ### Added
 - Concurrency for SMS sending : you can now call sendSms asynchronously multiple times, there is a queue system to prevent crosstalk
@@ -48,7 +54,8 @@ When called, sendSms will instanciate an `Sim800Sms` and put it in a queue, then
 - Initial Release
 
 
-[Unreleased]: https://github.com/julienfdev/sim800/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/julienfdev/sim800/compare/v0.4.0...HEAD
+[0.4.0]:  https://github.com/julienfdev/sim800/releases/tag/v0.4.0
 [0.3.0]:  https://github.com/julienfdev/sim800/releases/tag/v0.3.0
 [0.2.0]:  https://github.com/julienfdev/sim800/releases/tag/v0.2.0
 [0.1.2]:  https://github.com/julienfdev/sim800/releases/tag/v0.1.2

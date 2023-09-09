@@ -100,6 +100,8 @@ The `Sim800Client` observe each command and manages its **output** buffer when t
 
 6. `delivery-report`: This event is emitted when a delivery report is received for a sent SMS message. The `compositeId` parameter represents the composite message ID associated with the delivered message, and the `status` parameter indicates the delivery status, while the optional `detail` parameter provides additional details about the delivery status.
 
+7. `error` : This event is emitted whenever a command or an automatic action performed on the `Sim800Client` ends in an error. Its event nature allows you to quickly implement a watchdog or monitor sms or network failures.
+
 These events and their associated listener functions allow users to handle various communication events and incoming data from the SIM800 module in a structured and event-driven manner, enabling effective control and monitoring of the module's behavior.
 
 ## Advanced usage
