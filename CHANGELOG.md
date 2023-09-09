@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The error event is fired asynchronously when a `send` ends in an error. It allows you to easily implement a watchdog, monitor sms or network failures, etc... 
 
+- `getNetworkStatus` method and `NetworkStatus` enum
+
+### Fixed
+- Bug that occured when high-level method `sendSms` was called while the device has been reset or during initialization
+
+### Changed
+- (BREAKING) `checkNetwork` is now called `monitorNetworkUntilReady`, more semantically correct
+- `AtCommand` constructor now has an optional `timeoutMs` parameter
+
 ## [0.3.0] - 2023-09-03
 ### Added
 - Concurrency for SMS sending : you can now call sendSms asynchronously multiple times, there is a queue system to prevent crosstalk

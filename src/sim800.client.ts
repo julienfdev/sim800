@@ -34,6 +34,7 @@ import { deliveryReportInputSubscriberFactory } from './subscribers/delivery-rep
 import { deliveryReportStreamSubscriberFactory } from './subscribers/delivery-report-stream-subscriber';
 import { newSmsSubscriberFactory } from './subscribers/new-sms-subscriber';
 import { smsStreamSubscriberFactory } from './subscribers/sms-stream-subscriber';
+import { NetworkStatus } from './interfaces';
 
 export class Sim800Client implements Sim800EventEmitter {
   eventEmitter = new EventEmitter();
@@ -129,7 +130,7 @@ export class Sim800Client implements Sim800EventEmitter {
       }
       this.state = Sim800ClientState.Initialized;
       this.logger?.log('Sim800Client Initialized, waiting for network');
-      this.checkNetwork(this.network$);
+      this.monitorNetworkUntilReady(this.network$);
       // Change SIM Mode
       await this.send(new CnmiCommand(this.cnmi));
       // Change to PDU
@@ -178,7 +179,11 @@ export class Sim800Client implements Sim800EventEmitter {
   }
 
   async sendSms(number: string, text: string, deliveryReport = false) {
-    this.logger?.log(`sendSms called for number: "${number}", waiting for the line to be free`);
+    this.logger?.debug?.(`sendSms called for number: "${number}", waiting line free and network ready`);
+    const networkReady = await this.isNetworkReady();
+    if (!networkReady) {
+      throw new Error('network stalled, please reset the device and try again');
+    }
 
     const sms = new Sim800Sms(this, { number, text, deliveryReport });
     this.smsQueue.push(sms);
@@ -216,13 +221,27 @@ export class Sim800Client implements Sim800EventEmitter {
     }
   }
 
+  /**
+   *
+   * @deprecated will be removed from the next minor release
+   */
   checkNetwork(network$: AsyncSubject<boolean>) {
+    this.monitorNetworkUntilReady(network$);
+  }
+
+  monitorNetworkUntilReady(network$: AsyncSubject<boolean>) {
     interval(5000)
       .pipe(takeUntil(network$))
       .subscribe(async () => {
         const networkResult = (await this.send(new CregStatusCommand())) as string;
         this.handleNetworkResult(networkResult);
       });
+  }
+
+  async getNetworkStatus(): Promise<NetworkStatus> {
+    const result = (await this.send(new CregStatusCommand())) as string;
+
+    return (result.slice(-1) as NetworkStatus) || NetworkStatus.Unknown;
   }
 
   private setNetworkReady() {
